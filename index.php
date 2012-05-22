@@ -1,6 +1,6 @@
 <?php
   ob_start("ob_gzhandler");
-  require config.php; //load API url;
+  require config.php; //load API url 因为此接口原非公开，所以暂不公布;
   date_default_timezone_set('Asia/Shanghai');
       function err($code) {
         echo '<p style="padding-top:20px;">0_o 接口不稳定，<span id="timer">15秒后自动</span><a href="javascript:void(0)" onclick="location.reload()">刷新</a></p>';
