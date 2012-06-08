@@ -9,13 +9,14 @@
   }
   //echo $_SERVER['HTTP_USER_AGENT'];
   require 'config.php'; //load API url 因为此接口原非公开，所以暂不公布;
-  
-  $m_err = 0; //校正时间误差
+  $debug = true;
+  $apitime = time();
+  $m_err = -35; //校正时间误差，API 服务器时间居然比标准时间慢 35 - 37 秒；
   function err($code) {
-   	$mysql = new SaeMysql();
+        if($GLOBALS['debug']){$mysql = new SaeMysql();
 	$sql = "INSERT  INTO `result` ( `status`) VALUES ( ".$code." ) ";
 	$mysql->runSql( $sql );
-	$mysql->closeDb(); 
+	$mysql->closeDb(); }
         echo '<p style="padding-top:20px;">0_o 接口不稳定或输入有误，<span id="timer">15秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></p>';
         echo "<script>var timer = document.getElementById('timer');  var i = 15; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);</script>";        
         die('<style>form{padding-top:100px}</style></body></html>');
@@ -41,6 +42,8 @@
       //fputs($proxy_fp, "Proxy-Authorization: Basic " . base64_encode ("$proxy_user:$proxy_pass") . "\r\n\r\n"); // added
     while(!feof($proxy_fp)) {$proxy_cont .= fread($proxy_fp,4096);}
     fclose($proxy_fp);
+    preg_match('/Date:(.*)\r\n/isU',$proxy_cont,$matches);
+    if($matches) $GLOBALS['apitime'] = strtotime($matches[1]);
     $proxy_cont = substr($proxy_cont, strpos($proxy_cont,"\r\n\r\n")+4);
     return $proxy_cont;
   }
@@ -68,10 +71,10 @@
       foreach($proxys as $k => $v) {
         $raw = @proxy_url($url, $k);
         if($raw && check($raw)) {
-          $mysql = new SaeMysql();
+          if($GLOBALS['debug']){$mysql = new SaeMysql();
           $sql = "INSERT  INTO `proxy` ( `host`,`port`) VALUES ( '".$v[0]."', ".$v[1].") ";
           $mysql->runSql( $sql );
-          $mysql->closeDb();
+          $mysql->closeDb();}
           break;
         }
       }
@@ -238,12 +241,21 @@
       <?php foreach($st['bus'] as $bus) {
     echo '<span name="b'.$bus->equipKey.'" onclick="Follow.follow('.$bus->equipKey.')">';
   echo $bus->equipKey.'号车:';
-        $intime = date_create($bus->inTime);
-        $intime->modify($m_err.' second');
-        $intervalo = date_diff($intime, date_create());
-        $out = $intervalo->format("<b>&nbsp;%i分钟%s秒&nbsp;</b>前已抵达此站&nbsp;&dArr;");
+        $intime = strtotime($bus->inTime) + $m_err;
+        $diff_time = $apitime - $intime;
+        $nowtime = time();
+        echo "<!-- $apitime , $nowtime -->";
+        $out = '&nbsp;<b name="timer" time="'.($diff_time + 1).'">' .($diff_time<0?'-':''). date("i分s秒",abs($diff_time)).'</b>&nbsp;';
+        $out .= '前已抵达此站&nbsp;&dArr;';
         echo $out;
-        echo '</span><br>';        
+        echo '</span><br>';
+        if($GLOBALS['debug']){
+          if($bus->inTime != $bus->adTime) {
+            $kv = new SaeKV();
+            $ret = $kv->init();
+            $ret = $kv->set('T'.time().rand(100,999), $bus->inTime.'||||'.$bus->adTime);
+          }
+        }
       } ?>      
           </td>
         </tr>
@@ -252,7 +264,18 @@
     </table>
   <script>
   var timer = document.getElementById('timer');  var i = 25; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);
-  document.getElementById('s').value = '<?php echo strtoupper($route); ?>';
+  //document.getElementById('s').value = '<?php echo strtoupper($route); ?>';
+  var TimerList = document.getElementsByName('timer');
+  var n = setInterval(function(){
+    for(var key=0;key<TimerList.length;++key){
+      var unix = TimerList[key].getAttribute('time');
+      var min = String(Math.abs(parseInt(unix/60))),
+          sec = String(Math.abs(unix%60));
+      TimerList[key].innerHTML = (parseInt(unix)<0?'-':'')+(min<10?("0"+min):min)+'分'+(sec<10?("0"+sec):sec)+'秒';
+      TimerList[key].setAttribute('time',parseInt(unix)+1);
+    }
+  },1000);
+
   var Follow = {
     list:[<?php echo @$_COOKIE['bus']; ?>],
     follow:function(bus) {for(var i in this.list) {if(this.list[i]==bus) {this.unfollow(i,bus);return;}};this.list.push(bus);this.recookie();},
@@ -331,8 +354,8 @@
   </body>
 </html>
 <?php
-$mysql = new SaeMysql();
+if($GLOBALS['debug']){$mysql = new SaeMysql();
 $sql = "INSERT  INTO `headers` ( `user_agent` ) VALUES ( '"  . $mysql->escape( $_SERVER['HTTP_USER_AGENT'] ) . "' ) ";
 $mysql->runSql( $sql );
-$mysql->closeDb();
+$mysql->closeDb();}
 ?>
