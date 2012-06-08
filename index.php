@@ -2,7 +2,7 @@
   date_default_timezone_set('Asia/Shanghai');
   ob_start("ob_gzhandler");
   // Just For UC Broswer;
-  if(!empty($_GET['cookie'])) {
+  if(isset($_GET['cookie'])) {
     setcookie('bus',$_GET['cookie'], time()+2*3600);
     header("Content-type: text/javascript");
     die (";");
@@ -259,7 +259,7 @@
     unfollow:function(bus_i,bus) {this.list.splice(bus_i,1);this.color(bus);this.recookie();},
     recookie:function(){
       this.color();
-      <?php if(strpos($_SERVER['HTTP_USER_AGENT'],'UC')>=0) { ?> //Fixed For UC Broswer;
+      <?php if(strpos($_SERVER['HTTP_USER_AGENT'],'UC')>0) { ?> //Fixed For UC Broswer;
       var newScript = document.createElement('script');
       newScript.src = "index.php?cookie="+this.list.join(",");
       document.body.appendChild(newScript);
