@@ -7,27 +7,40 @@
     header("Content-type: text/javascript");
     die (";");
   }
+  if(preg_match('/Java/',$_SERVER['HTTP_USER_AGENT'])) $isJava = True;
+  if(preg_match('/UC/',$_SERVER['HTTP_USER_AGENT'])) $isUC = True;
+  if(preg_match('/JUC/',$_SERVER['HTTP_USER_AGENT'])) $isJUC = True;
+  if(preg_match('/MSIE/',$_SERVER['HTTP_USER_AGENT'])) $isIE = True;
+  if(preg_match('/iPhone|iPod|iTouch|iPad/isU',$_SERVER['HTTP_USER_AGENT'])) $isIOS = True;
   //echo $_SERVER['HTTP_USER_AGENT'];
   require 'config.php'; //load API url 因为此接口原非公开，所以暂不公布;
-  $debug = true;
-  $apitime = time();
-  $m_err = -35; //校正时间误差，API 服务器时间居然比标准时间慢 35 - 37 秒；
+  $debug = True;
+  $api_time = time();
+  $m_err = 0; //校正时间误差，API 服务器时间居然比标准时间慢 30 - 37 秒；
   function err($code) {
-        if($GLOBALS['debug']){$mysql = new SaeMysql();
+       if($GLOBALS['debug']){
+         $mysql = new SaeMysql();
 	$sql = "INSERT  INTO `result` ( `status`) VALUES ( ".$code." ) ";
 	$mysql->runSql( $sql );
-	$mysql->closeDb(); }
-        echo '<p style="padding-top:20px;">0_o 接口不稳定或输入有误，<span id="timer">15秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></p>';
-        echo "<script>var timer = document.getElementById('timer');  var i = 15; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);</script>";        
-        die('<style>form{padding-top:100px}</style></body></html>');
+	$mysql->closeDb(); 
+        
+        }
+        if(intval($code)<=-100){
+          echo '<p style="padding-top:20px;">0_o 接口不稳定，<span id="timer">15秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></p>';
+          echo "<script>var timer = document.getElementById('timer');  var i = 15; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);</script>";            
+        }
+        else {
+          echo '<p style="padding-top:20px;">0_o 输入有误，请重新输入。<br>线路格式：“b22、B25路、801、高峰4线、大学城4线、夜4”；<br>站点格式：“华师站、华景新城、体育中心站B3”</p>';
+        }
+        die('<style>form{padding-top:60px}</style></body></html>');
         
   }
-  $opts = array( 
-    'http'=>array( 
-    'method'=>'GET', 
-    'timeout'=>3
-  )); 
-  $context = stream_context_create($opts);
+//  $opts = array( 
+//    'http'=>array( 
+//    'method'=>'GET', 
+//    'timeout'=>3
+//  )); 
+//  $context = stream_context_create($opts);
   
   //sae 的 fetchurl 不支持 proxy , 只能用此下策
   function proxy_url($proxy_url, $count) {
@@ -36,14 +49,15 @@
     $proxy_port = $proxys[$count][1];
     $proxy_cont = '';
     $proxy_fp = fsockopen($proxy_name, $proxy_port, $errno, $errstr, 1);
-    if (!$proxy_fp) {return false;}
-      //fputs($proxy_fp, "GET $proxy_url HTTP/1.0\r\nHost: $proxy_name\r\n\r\n");
-      fputs($proxy_fp, "GET $proxy_url HTTP/1.0\r\n\r\n");
-      //fputs($proxy_fp, "Proxy-Authorization: Basic " . base64_encode ("$proxy_user:$proxy_pass") . "\r\n\r\n"); // added
-    while(!feof($proxy_fp)) {$proxy_cont .= fread($proxy_fp,4096);}
+    if (!$proxy_fp) { return false; }
+    fputs($proxy_fp, "GET $proxy_url HTTP/1.0\r\n\r\n");
+    stream_set_blocking($proxy_fp, TRUE); 
+    stream_set_timeout($proxy_fp, 1);
+    $info = stream_get_meta_data($proxy_fp); 
+    while(!feof($proxy_fp) && (!$info['timed_out']) ) { $info = stream_get_meta_data($proxy_fp);$proxy_cont .= fread($proxy_fp,4096); }
     fclose($proxy_fp);
     preg_match('/Date:(.*)\r\n/isU',$proxy_cont,$matches);
-    if($matches) $GLOBALS['apitime'] = strtotime($matches[1]);
+    if($matches) $GLOBALS['api_time'] = strtotime($matches[1]); //使用 API 服务器时间，貌似他的时间跟 GPS 时间不一样啊
     $proxy_cont = substr($proxy_cont, strpos($proxy_cont,"\r\n\r\n")+4);
     return $proxy_cont;
   }
@@ -68,6 +82,7 @@
     //$raw = @file_get_contents($url,false,$context);
     $raw = 0;
     if(!$raw || !check($raw)) {
+      shuffle($proxys);
       foreach($proxys as $k => $v) {
         $raw = @proxy_url($url, $k);
         if($raw && check($raw)) {
@@ -91,13 +106,18 @@
   $action = empty($_GET['a'])?'':$_GET['a'];
   $re = !empty($_GET['s'])?strtoupper($_GET['s']):'';
   $te = !empty($_GET['t'])?($_GET['t']):'';
+  if(!$re && !$te) $isIndex = True;
+  else $isIndex = False;
 
 ?>
 <!DOCTYPE html>
 <html>
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.5, maximum-scale=1.5, minimum-scale=1">
+    <?php if($isIOS) { ?>
+    <link rel="apple-touch-icon" href="icon114.png"/>
+    <?php } ?>
     <title><?php echo $re?$re.'车的实时信息-':''; echo $te?$te.'的实时信息-':'';  ?>广州实时公交</title>
     <style>
       body{
@@ -106,20 +126,38 @@
         text-align:center;
         font-size:1em;
       }
+      b,u {
+        font-weight:900
+      }
+     <?php if($isJava) { ?>
+      table {
+        margin: 10px auto;
+        text-align:left;
+      }
+      td,th {
+        border:1px solid #666;
+        margin:0;
+      }
+     <?php } else { ?>
       table {
         max-width:420px;
-        margin: 10px auto;
+        margin: 10px auto;             
       }
+      
+     <?php } ?>
       .title {
         background:#ccc;
       }
       .search_result {
         font-size:24px;
       }
-      <?php echo (!$re && !$te)?'form{padding-top:60px}':''; ?>
+      <?php echo ($isIndex)?'form{padding-top:40px}':''; ?>
     </style>
   </head>
   <body>
+    <?php if((!$re && !$te)) { ?>
+    <h2>广州实时公交</h2>
+    <?php } ?>
 <?php if($re || (!$re && !$te)) { ?>    
     <form action="index.php" method="get" id="bus">
       <label>请输入查询<b>线路</b>：<input type="text" id="s" name="s" value="<?php echo $re; ?>" /></label>
@@ -153,7 +191,7 @@
         echo '<table border="1" class="search_result">';
         echo '<tr><th>请选择线路：</th></tr>';
         foreach($route_list as $k => $v) {
-          echo '<tr><td><a href="?a=detail&s='.$v.'">'.$v.'</a></td></tr>';
+          echo '<tr><td><a href="?a=detail&s='.urlencode($v).'">'.$v.'</a></td></tr>';
         }
         echo '</table>';
       }
@@ -175,7 +213,7 @@
         echo '<table border="1" class="search_result">';
         echo '<tr><th>请选择站点：</th></tr>';
         foreach($station_list as $k => $v) {
-          echo '<tr><td><a href="?a=station&t='.$v.'">'.$v.'</a></td></tr>';
+          echo '<tr><td><a href="?a=station&t='.urlencode($v).'">'.$v.'</a></td></tr>';
         }
         echo '</table>';
       }
@@ -208,7 +246,7 @@
       } 
       //var_dump($lines);
     ?>  
-    <h3><?php echo $route ?>&nbsp;&nbsp;<span id="timer">25秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></h3>
+    <?php if(!$isJava && !$isJUC) { ?><h3><?php echo $route ?>&nbsp;&nbsp;<span id="time">25秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></h3><?php } ?>
     <p><small>可将此页设为书签；点击车辆可两小时内跟踪</small></p>
     <table border ="1">
       <?php foreach($lines as $k => $v) { 
@@ -236,17 +274,17 @@
         </th><th><?php echo $v->busLine->strPlatName ?>&nbsp;&rArr;&nbsp;<?php echo $v->busLine->endPlatName ?></th></tr>
       <?php foreach($stations as $st) { ?>
         <tr>
-          <td class="s_n"><a href="index.php?a=find&t=<?php echo $st['name']; ?>"><?php echo $st['name']; ?></a></td>
-          <td>
+          <td><a href="index.php?a=find&t=<?php echo urlencode($st['name']); ?>"><?php echo $st['name']; ?></a></td>
+          <td>      
       <?php foreach($st['bus'] as $bus) {
-    echo '<span name="b'.$bus->equipKey.'" onclick="Follow.follow('.$bus->equipKey.')">';
-  echo $bus->equipKey.'号车:';
+    echo '<span id="b'.$bus->equipKey.'" onclick="Follow.follow('.$bus->equipKey.')">';
+  echo $bus->equipKey.'车:';
         $intime = strtotime($bus->inTime) + $m_err;
-        $diff_time = $apitime - $intime;
-        $nowtime = time();
-        echo "<!-- $apitime , $nowtime -->";
-        $out = '&nbsp;<b name="timer" time="'.($diff_time + 1).'">' .($diff_time<0?'-':''). date("i分s秒",abs($diff_time)).'</b>&nbsp;';
-        $out .= '前已抵达此站&nbsp;&dArr;';
+        //$api_time = time();   //重定义时间
+        $diff_time = time() - $intime;  //使用当前时间 或 $api_time
+        $out = '[<u time="'.($diff_time + 1).'">' .($diff_time<0?'-':''). date("i分s秒",abs($diff_time)).'</u>]';
+        if($bus->adflag) $out .= '前已<b>进站</b>&nbsp;&dArr;';
+        else $out .= '前已<b>出站</b>&nbsp;&dArr;';
         echo $out;
         echo '</span><br>';
         if($GLOBALS['debug']){
@@ -255,17 +293,27 @@
             $ret = $kv->init();
             $ret = $kv->set('T'.time().rand(100,999), $bus->inTime.'||||'.$bus->adTime);
           }
+          
+          if($diff_time<0) {
+            $mysql = new SaeMysql();
+            $sql = "INSERT  INTO `times` ( `line`,`adflag`,`server_time`,`api_server_time`,`api_time`) ";
+            $sql .= "VALUES ( '".strtoupper($route)."', ".intval($bus->adflag).", FROM_UNIXTIME(".time()."), FROM_UNIXTIME(".$GLOBALS['api_time']."), FROM_UNIXTIME(".$intime.")); ";
+            $mysql->runSql( $sql );
+            $mysql->closeDb();
+          }
+          
         }
-      } ?>      
+      } ?>
+            <?php if($isIE && !count($st['bus'])) echo "&nbsp;" ?>
           </td>
         </tr>
       <?php } ?>
       <?php } ?>
     </table>
   <script>
-  var timer = document.getElementById('timer');  var i = 25; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);
+  var timer = document.getElementById('time');  var i = 25; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);
   //document.getElementById('s').value = '<?php echo strtoupper($route); ?>';
-  var TimerList = document.getElementsByName('timer');
+  var TimerList = document.getElementsByTagName('u');
   var n = setInterval(function(){
     for(var key=0;key<TimerList.length;++key){
       var unix = TimerList[key].getAttribute('time');
@@ -282,7 +330,7 @@
     unfollow:function(bus_i,bus) {this.list.splice(bus_i,1);this.color(bus);this.recookie();},
     recookie:function(){
       this.color();
-      <?php if(strpos($_SERVER['HTTP_USER_AGENT'],'UC')>0) { ?> //Fixed For UC Broswer;
+      <?php if($isUC) { ?> //Fixed For UC Broswer;
       var newScript = document.createElement('script');
       newScript.src = "index.php?cookie="+this.list.join(",");
       document.body.appendChild(newScript);
@@ -294,17 +342,13 @@
     },
     color:function(bus){
             if(bus) {
-              var items = document.getElementsByName('b'+bus);
-              for(var a = 0; a < items.length; ++a) {
-                      items[a].style.color = '';
-              }    
+              var item = document.getElementById('b'+bus);
+              item.style.color = '';
             }
           else {
             for(var i in this.list) {
-              var items = document.getElementsByName('b'+this.list[i]);
-              for(var a = 0; a < items.length; ++a) {
-                items[a].style.color = '#F00';
-              }
+              var item = document.getElementById('b'+this.list[i]);
+              item.style.color = '#F00';              
             }
           }
     }
@@ -322,13 +366,13 @@
       if(empty($obj_result)) err('-108');
       if($obj_result->statusCode != -1) err('-8');
       $buses = $obj_result->content;
-      echo '<h3>'.$station.'&nbsp;&nbsp;<span id="timer">25秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></h3>';
+      if(!$isJava && !$isJUC) echo '<h3>'.$station.'&nbsp;&nbsp;<span id="time">25秒后自动</span><a href="javascript:void(0)" onclick="clearInterval(m);location.reload()">刷新</a></h3>';
       echo '<p><small>点击车辆可查看详情；查询站点的接口出错率高，建议使用<a href="index.php" >查询线路</a></small></p>';
       echo '<table border="1">';
       foreach($buses as $bus) {
         $bus_s = $bus->busStation;
         echo "<tr><td><b>";
-        echo '<a href="index.php?a=detail&s='.$bus_s->lineName.'">';
+        echo '<a href="index.php?a=detail&s='.urlencode($bus_s->lineName).'">';
         echo $bus_s->lineName;
         echo '</a>';
         echo "（";
@@ -344,18 +388,27 @@
       echo '</table>';
     ?>
     <script>
-     var timer = document.getElementById('timer');  var i = 25; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);
+     var timer = document.getElementById('time');  var i = 25; var m = setInterval(function(){timer.innerHTML=i+'秒后自动';--i;if(i==0){clearInterval(m);location.reload();}},1000);
      </script>
    <?php
       
     }
     ?>
-    <p><?php if($re || $te) { ?><a href="javascript:history.back();">后退</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="index.php" >返回首页</a>&nbsp;&nbsp;&nbsp;&nbsp;<?php } ?><?php if(!$re && !$te) { ?><a href="http://gzmetro.sinaapp.com" target="_blank">广州地铁时间估算工具</a>&nbsp;&nbsp;&nbsp;&nbsp;<?php } ?><a href="review.html" >留言</a></p>
+    
+    <p <?php if($isIndex) echo "style='padding-top:40px'" ?>><?php if($isIndex) echo "<small>* 这几天特别不稳定，请耐心等候刷新。</small><br>"; ?>
+    <?php if(!$isIndex) { ?><a href="javascript:history.back();">后退</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="index.php" >返回首页</a>&nbsp;&nbsp;&nbsp;&nbsp;<?php } ?><?php if($isIndex) { ?><a href="http://gzmetro.sinaapp.com" target="_blank">广州地铁时间估算工具</a>&nbsp;&nbsp;&nbsp;&nbsp;<?php } ?><a href="review.html" >反馈</a></p>
   </body>
 </html>
 <?php
-if($GLOBALS['debug']){$mysql = new SaeMysql();
-$sql = "INSERT  INTO `headers` ( `user_agent` ) VALUES ( '"  . $mysql->escape( $_SERVER['HTTP_USER_AGENT'] ) . "' ) ";
-$mysql->runSql( $sql );
-$mysql->closeDb();}
+if($GLOBALS['debug']){
+  $mysql = new SaeMysql();
+  if($id = $mysql->getVar("select id from headers where user_agent like '".$mysql->escape( $_SERVER['HTTP_USER_AGENT'] )."';")) {   
+      $sql = "update headers set count = count + 1 where id = ".$id;   
+    }
+    else {
+      $sql = "INSERT  INTO `headers` ( `user_agent` ) VALUES ( '"  . $mysql->escape( $_SERVER['HTTP_USER_AGENT'] ) . "' ) ";      
+    }
+    $mysql->runSql( $sql );
+    $mysql->closeDb();
+}
 ?>
