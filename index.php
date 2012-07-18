@@ -82,7 +82,7 @@
     //$raw = @file_get_contents($url,false,$context);
     $raw = 0;
     if(!$raw || !check($raw)) {
-      shuffle($proxys);
+      shuffle($proxys); //一句话实现伪负载均衡...
       foreach($proxys as $k => $v) {
         $raw = @proxy_url($url, $k);
         if($raw && check($raw)) {
