@@ -1,4 +1,5 @@
 <?php
+  //header("Location: index.html");
   date_default_timezone_set('Asia/Shanghai');
   ob_start("ob_gzhandler");
   // Just For UC Broswer;
@@ -12,11 +13,12 @@
   if(preg_match('/JUC/',$_SERVER['HTTP_USER_AGENT'])) $isJUC = True;
   if(preg_match('/MSIE/',$_SERVER['HTTP_USER_AGENT'])) $isIE = True;
   if(preg_match('/iPhone|iPod|iTouch|iPad/isU',$_SERVER['HTTP_USER_AGENT'])) $isIOS = True;
-  //echo $_SERVER['HTTP_USER_AGENT'];
+  
   require 'config.php'; //load API url 因为此接口原非公开，所以暂不公布;
   $debug = True;
   $api_time = time();
   $m_err = 0; //校正时间误差，API 服务器时间居然比标准时间慢 30 - 37 秒；
+  $mmc = memcache_init(); //还是来个缓存吧
   function err($code) {
        if($GLOBALS['debug']){
          $mysql = new SaeMysql();
@@ -35,12 +37,6 @@
         die('<style>form{padding-top:60px}</style></body></html>');
         
   }
-//  $opts = array( 
-//    'http'=>array( 
-//    'method'=>'GET', 
-//    'timeout'=>3
-//  )); 
-//  $context = stream_context_create($opts);
   
   //sae 的 fetchurl 不支持 proxy , 只能用此下策
   function proxy_url($proxy_url, $count) {
@@ -64,6 +60,10 @@
   
   function getinfo($act, $str) {
     require 'config.php';
+    // Add for memcached
+    $memkey = base64_encode($act.$str);
+    if($raw = memcache_get($GLOBALS['mmc'], $memkey)) return $raw;
+    
     $str = iconv('utf-8','gb2312',strtoupper($str));
     switch ($act) {
       case 'search':
@@ -94,6 +94,7 @@
         }
       }
     }
+    memcache_set($GLOBALS['mmc'], $memkey, $raw, 0, 3);
     return $raw;
   }
   
@@ -109,6 +110,7 @@
   if(!$re && !$te) $isIndex = True;
   else $isIndex = False;
 
+  //if(!$isIndex) header("Location: index.php");
 ?>
 <!DOCTYPE html>
 <html>
@@ -158,14 +160,14 @@
     <?php if((!$re && !$te)) { ?>
     <h2>广州实时公交</h2>
     <?php } ?>
-<?php if($re || (!$re && !$te)) { ?>    
+<?php if(0 &&($re || (!$re && !$te))) { ?>    
     <form action="index.php" method="get" id="bus">
       <label>请输入查询<b>线路</b>：<input type="text" id="s" name="s" value="<?php echo $re; ?>" /></label>
       <input type="hidden" name="a" value="search" />
       <input type="submit" />
       <?php  if(!$re && !$te) { ?><p class="submit_tip"><small>如：801、B25、夜48、高峰5、高峰快线30...</small></p><?php } ?>
     </form>
- <?php } if($te || (!$re && !$te)) { ?>
+ <?php } if( 0 && ($te || (!$re && !$te))) { ?>
     <form action="index.php" method="get" id="station">
       <label>请输入查询<b>站点</b>：<input type="text" id="s" name="t" value="<?php echo $te; ?>" /></label>
       <input type="hidden" name="a" value="find" />
@@ -179,7 +181,6 @@
     elseif($action == 'search') {
       if(empty($_GET['s'])) err('-1');
       $search = $_GET['s'];
-      //$raw_result = file_get_contents($search_url.iconv('utf-8','gb2312',strtoupper($search)),false,$context);
       $raw_result = getinfo('search',$search);
       $obj_result = json_decode($raw_result);
       if(empty($obj_result)) err('-102');
@@ -395,7 +396,8 @@
     }
     ?>
     
-    <p <?php if($isIndex) echo "style='padding-top:40px'" ?>><?php if($isIndex) echo "<small>* 这几天特别不稳定，请耐心等候刷新。</small><br>"; ?>
+    <p>* 已有相关人员在反馈页面提出警告，暂停服务。</p>
+    <p <?php if($isIndex) echo "style='padding-top:40px'" ?>>
     <?php if(!$isIndex) { ?><a href="javascript:history.back();">后退</a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="index.php" >返回首页</a>&nbsp;&nbsp;&nbsp;&nbsp;<?php } ?><?php if($isIndex) { ?><a href="http://gzmetro.sinaapp.com" target="_blank">广州地铁时间估算工具</a>&nbsp;&nbsp;&nbsp;&nbsp;<?php } ?><a href="review.html" >反馈</a></p>
   </body>
 </html>
